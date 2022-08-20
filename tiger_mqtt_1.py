@@ -4,7 +4,8 @@ from umqtt_simple import MQTTClient
 import network
 import time
 import ntptime
-from config import load_ssid_password, has_ssid_password,disable_ssid_password
+from config import load_ssid_password, has_ssid_password,disable_ssid_password,save_status,load_status,compare_status
+import json
 
 wlan=None
 myid="invalid"
@@ -12,54 +13,84 @@ switch_1 = Pin(16, Pin.OUT, value=0)
 switch_2 = Pin(14, Pin.OUT, value=0)
 switch_3 = Pin(12, Pin.OUT, value=0)
 switch_4 = Pin(13, Pin.OUT, value=0)
+switch_status={}
 
 clientmqtt:MQTTClient=None
 def sub_cb(topic, msg):
-    global switch_1,switch_2,switch_3,switch_4,clientmqtt,myid
-    print((topic, msg))
-    if msg == b"on_1":
-        switch_1.value(1)
-        print("switch_1 1")
+    global switch_1,switch_2,switch_3,switch_4,clientmqtt,myid,swtich_status
+    #print((topic, msg))
+    if msg==b"welcome":
         report_status()
-    elif msg == b"off_1":
-        switch_1.value(0)
-        print("switch_1 0")
+        return
+    try:
+        s=json.loads(msg)
+    except:
+        print("msg json error",msg)
         report_status()
-    elif msg == b"on_2":
-        switch_2.value(1)
-        print("switch_2 1")
-        report_status()
-    elif msg == b"off_2":
-        switch_2.value(0)
-        print("switch_2 0")
-        report_status()
-    elif msg == b"on_3":
-        switch_3.value(1)
-        print("switch_3 1")
-        report_status()
-    elif msg == b"off_3":
-        switch_3.value(0)
-        print("switch_3 0")
-        report_status()
-    elif msg == b"on_4":
-        switch_4.value(1)
-        print("switch_4 1")
-        report_status()
-    elif msg == b"off_4":
-        switch_4.value(0)
-        print("switch_4 0")
-        report_status()
-    elif msg == b"info":
-        report_status()
-        
-def report_status():
-    global switch_1,switch_2,switch_3,switch_4,clientmqtt,myid
-    m="%1d%1d%1d%1d"%(switch_1.value(),switch_2.value(),switch_3.value(),switch_4.value())
+        return
+    sss={}
+    if "switch_1" in s.keys():
+        sss["switch_1"]=s["switch_1"]
+    if "switch_2" in s.keys():
+        sss["switch_2"]=s["switch_2"]
+    if "switch_3" in s.keys():
+        sss["switch_3"]=s["switch_3"]
+    if "switch_4" in s.keys():
+        sss["switch_4"]=s["switch_4"]
+    set_status(sss)
+    report_status()
+
+
+def report_status(firstinfo=False):
+    global switch_1,switch_2,switch_3,switch_4,clientmqtt,myid,swtich_status
+    sss = get_status()
+    if firstinfo:
+        sss["first"]=1
+    else:
+        sss["first"]=0
+    m=json.dumps(sss)
     t="esp8266_switch/info/"+myid
     m=str.encode(m)
     t=str.encode(t)
     clientmqtt.publish(t, m)
-  
+
+def get_status():
+    global switch_1,switch_2,switch_3,switch_4
+    s={}
+    s["switch_1"]=switch_1.value()
+    s["switch_2"]=switch_2.value()
+    s["switch_3"]=switch_3.value()
+    s["switch_4"]=switch_4.value()
+    return s
+
+def set_status(status):
+    global switch_1,switch_2,switch_3,switch_4,switch_status
+    haschange=False
+    try:
+      if "switch_1" in status.keys():
+          if switch_status["switch_1"]!=status["switch_1"]:
+              switch_status["switch_1"]=status["switch_1"]
+              haschange=True
+      if "switch_2" in status.keys():
+          if switch_status["switch_2"]!=status["switch_2"]:
+              switch_status["switch_2"]=status["switch_2"]
+              haschange=True
+      if "switch_3" in status.keys():
+          if switch_status["switch_3"]!=status["switch_3"]:
+              switch_status["switch_3"]=status["switch_3"]
+              haschange=True
+      if "switch_4" in status.keys():
+          if switch_status["switch_4"]!=status["switch_4"]:
+              switch_status["switch_4"]=status["switch_4"]
+              haschange=True
+    except:
+      print("set_status error compare",e)
+    if haschange:
+        save_status(switch_status)
+        switch_1.value(switch_status["switch_1"])
+        switch_2.value(switch_status["switch_2"])
+        switch_3.value(switch_status["switch_3"])
+        switch_4.value(switch_status["switch_4"])
 
 def connectWifi(ssid, passwd):
     global wlan,myid
@@ -92,7 +123,11 @@ def connectWifi(ssid, passwd):
 
 
 def run():
-    global  wlan,switch_1,switch_2,switch_3,switch_4,myid,clientmqtt
+    global  wlan,switch_1,switch_2,switch_3,switch_4,myid,clientmqtt,switch_status
+    
+    switch_status=get_status()
+    s=load_status()
+    set_status(s)
 
     SERVER = "mqtt.lohasapp.com.cn"
     username = 'username'
@@ -125,15 +160,18 @@ def run():
         clientmqtt.connect()  # connect mqtt
         clientmqtt.subscribe(TOPIC)  # client subscribes to a topic
         print("Connected to %s, subscribed to %s topic" % (server, TOPIC))
-
+        report_status(firstinfo=True)
         lasttime=time.time()
+        lasttime_info=time.time()
         while True:
             if time.time()-lasttime>30:
                 lasttime=time.time()
                 clientmqtt.ping()
-                print("ping")
+            if time.time()-lasttime_info>60:
+                lasttime_info=time.time()
+                report_status()
             clientmqtt.check_msg()  # wait message
-            time.sleep(0.05)
+            time.sleep(0.1)
         
         if (clientmqtt is not None):
             clientmqtt.disconnect()    
@@ -146,6 +184,8 @@ def run():
 
 if __name__ == "__main__":
     run()
+
+
 
 
 

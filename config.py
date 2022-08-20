@@ -70,20 +70,98 @@ def enable_ssid_password():
   else:
     pass
 
+def save_status(s:{}):
+    if not "switch_1" in s.keys():
+        s["switch_1"]=0
+    if not "switch_2" in s.keys():
+        s["switch_2"]=0
+    if not "switch_3" in s.keys():
+        s["switch_3"]=0
+    if not "switch_4" in s.keys():
+        s["switch_4"]=0
+    try:
+        os.remove("status.json")
+    except:
+        pass
+    f = open("status.json", "w")
+    f.write(json.dumps(s))
+    f.close()
+    print("save_status",s)
+
+def load_status():
+    default_status={}
+    default_status["switch_1"]=0
+    default_status["switch_2"]=0
+    default_status["switch_3"]=0
+    default_status["switch_4"]=0
+
+    files = os.listdir(".")
+    if "status.json" in files:
+        try:
+            f = open("status.json", "r")
+            s = json.loads(f.read())
+            f.close()
+            print("load_status ",s)
+            if not "switch_1" in s.keys():
+                print("switch_1" in s.keys())
+                s["switch_1"] = 0
+            if not "switch_2" in s.keys():
+                print("s2")
+                s["switch_2"] = 0
+            if not "switch_3" in s.keys():
+                print("s3")
+                s["switch_3"] = 0
+            if not "switch_4" in s.keys():
+                print("s4")
+                s["switch_4"] = 0
+        except Exception as e:
+            print("load_status error----",e)
+            s = default_status
+        return s
+    else:
+        return default_status
+
+
+def compare_status(currentstatus:{},target:{}):
+    try:
+        if currentstatus["switch_1"]!=target["switch_1"]:
+            return False
+        if currentstatus["switch_2"]!=target["switch_2"]:
+            return False
+        if currentstatus["switch_3"]!=target["switch_3"]:
+            return False
+        if currentstatus["switch_4"]!=target["switch_4"]:
+            return False
+        return True
+    except Exception as e:
+        print("compare_status error----",e)
+        return False
 
 
 if __name__ == "__main__":
-    print(has_ssid_password())
-    k = {}
-    k["SSID"] = "edge_ai_tiger"
-    k["Password"]="yjkj123456"
-    save_ssid_password(k)
-    print(has_ssid_password())
-    print(load_ssid_password())
-    disable_ssid_password()
-    print(load_ssid_password())
-    enable_ssid_password()
-    print(load_ssid_password())
-    disable_ssid_password()
+    s=load_status()
+    s={}
+    save_status(s)
+    s=load_status()
+    sss={}
+    sss["switch_1"]=0
+    sss["switch_2"]=0
+    sss["switch_3"]=0
+    sss["switch_4"]=0
+    print(compare_status(s,sss))
+
+    # print(has_ssid_password())
+    # k = {}
+    # k["SSID"] = "edge_ai_tiger"
+    # k["Password"]="yjkj123456"
+    # save_ssid_password(k)
+    # print(has_ssid_password())
+    # print(load_ssid_password())
+    # disable_ssid_password()
+    # print(load_ssid_password())
+    # enable_ssid_password()
+    # print(load_ssid_password())
+    # disable_ssid_password()
+
 
 
