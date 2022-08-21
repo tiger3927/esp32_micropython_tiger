@@ -4,23 +4,18 @@ from umqtt_simple import MQTTClient
 import network
 import time
 import ntptime
-from config import load_ssid_password, has_ssid_password, disable_ssid_password, save_status, load_status, \
-    compare_status
+from config import load_ssid_password, has_ssid_password, disable_ssid_password, save_status, load_status,\
+    compare_status,get_status,set_status,reset_status
 import json
 
 wlan = None
 myid = "invalid"
-switch_1 = Pin(16, Pin.OUT, value=0)
-switch_2 = Pin(14, Pin.OUT, value=0)
-switch_3 = Pin(12, Pin.OUT, value=0)
-switch_4 = Pin(13, Pin.OUT, value=0)
-switch_status = {}
 
 clientmqtt: MQTTClient = None
 
 
 def sub_cb(topic, msg):
-    global switch_1, switch_2, switch_3, switch_4, clientmqtt, myid, swtich_status
+    global clientmqtt, myid
     # print((topic, msg))
     if msg == b"welcome":
         report_status()
@@ -45,7 +40,7 @@ def sub_cb(topic, msg):
 
 
 def report_status(firstinfo=False):
-    global switch_1, switch_2, switch_3, switch_4, clientmqtt, myid, swtich_status
+    global clientmqtt
     sss = get_status()
     if firstinfo:
         sss["first"] = 1
@@ -58,45 +53,6 @@ def report_status(firstinfo=False):
     clientmqtt.publish(t, m)
 
 
-def get_status():
-    global switch_1, switch_2, switch_3, switch_4
-    s = {}
-    s["switch_1"] = switch_1.value()
-    s["switch_2"] = switch_2.value()
-    s["switch_3"] = switch_3.value()
-    s["switch_4"] = switch_4.value()
-    return s
-
-
-def set_status(status):
-    global switch_1, switch_2, switch_3, switch_4, switch_status
-    haschange = False
-    try:
-        if "switch_1" in status.keys():
-            if switch_status["switch_1"] != status["switch_1"]:
-                switch_status["switch_1"] = status["switch_1"]
-                haschange = True
-        if "switch_2" in status.keys():
-            if switch_status["switch_2"] != status["switch_2"]:
-                switch_status["switch_2"] = status["switch_2"]
-                haschange = True
-        if "switch_3" in status.keys():
-            if switch_status["switch_3"] != status["switch_3"]:
-                switch_status["switch_3"] = status["switch_3"]
-                haschange = True
-        if "switch_4" in status.keys():
-            if switch_status["switch_4"] != status["switch_4"]:
-                switch_status["switch_4"] = status["switch_4"]
-                haschange = True
-    except:
-        print("set_status error compare", e)
-    if haschange:
-        save_status(switch_status)
-        switch_1.value(switch_status["switch_1"])
-        switch_2.value(switch_status["switch_2"])
-        switch_3.value(switch_status["switch_3"])
-        switch_4.value(switch_status["switch_4"])
-
 
 def connectWifi(ssid, passwd):
     global wlan, myid
@@ -105,12 +61,11 @@ def connectWifi(ssid, passwd):
     # wlan.disconnect()                         #Disconnect the last connected WiFi
     wlan.connect(ssid, passwd)  # connect wifi
     count = 0
-    while (wlan.ifconfig()[0] == '0.0.0.0'):
+    while (wlan.ifconfig()[0] == '0.0.0.0') or not wlan.isconnected():
         if count > 10:
             print("can't connect wifi !!! disable ssid password ----! REBOOT ----")
             disable_ssid_password()
-            machine.reset()
-            return
+            return False
         time.sleep(1)
         count += 1
 
@@ -126,14 +81,13 @@ def connectWifi(ssid, passwd):
     except Exception as e:
         print(e)
     print("同步后本地时间：%s" % str(time.localtime()))
+    return True
 
 
 def run():
-    global wlan, switch_1, switch_2, switch_3, switch_4, myid, clientmqtt, switch_status
+    global wlan,myid, clientmqtt
 
-    switch_status = get_status()
-    s = load_status()
-    set_status(s)
+    reset_status()
 
     SERVER = "mqtt.lohasapp.com.cn"
     username = 'username'
@@ -143,18 +97,30 @@ def run():
     clientmqtt = None
     # Catch exceptions,stop program if interrupted accidentally in the 'try'
     if has_ssid_password() == 1:
+        r=False
         try:
             k = load_ssid_password()
-            connectWifi(k["SSID"], k["Password"])
+            r=connectWifi(k["SSID"], k["Password"])
         except Exception as e:
             print(e)
             print("error connect wifi.....reboot....to get wifi ssid pwd!")
             disable_ssid_password()
-            machine.reset()
+            r=False
+        if r==False:
+            try:
+                wlan.disconnect()
+            except:
+                print("wlan disconnect error")
+            try:
+                wlan.active(False)
+                while (wlan.active() == True):
+                    time.sleep(0.1)
+            except:
+                print("wlan close error")
+            return
     else:
         print("has no wifi ssid .......!")
-        time.sleep(15)
-        machine.reset()
+        return
 
     try:
         server = SERVER
@@ -177,15 +143,24 @@ def run():
                 report_status()
             clientmqtt.check_msg()  # wait message
             time.sleep(0.1)
-
-        if (clientmqtt is not None):
-            clientmqtt.disconnect()
-        wlan.disconnect()
-        wlan.active(False)
+    except Exception as e:
+        print("mqtt  loop  error",e)
     finally:
-        time.sleep(30)
-        machine.reset()
-
+        try:
+            if (clientmqtt is not None):
+                clientmqtt.disconnect()
+        except:
+            print("mqtt disconnect error")
+            pass
+        try:
+            wlan.disconnect()
+        except:
+            print("wlan disconnect error")
+        print("mqtt connection quit-------!----wlan close")
+        wlan.active(False)
+        while(wlan.active()==True):
+            time.sleep(0.1)
 
 if __name__ == "__main__":
     run()
+
