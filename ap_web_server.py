@@ -196,7 +196,16 @@ def ap_start():
     should_exit = False
     #esp.osdebug(None)
     gc.collect()
-    ssid = 'ESP_AP'  # Set access point name
+    
+    wlan = network.WLAN(network.STA_IF)  # create a wlan object
+    wlan.active(True)  # Activate the network interface
+    s = wlan.config('mac')
+    myid = "esp8266_" + ('%02x%02x%02x%02x%02x%02x') % (s[0], s[1], s[2], s[3], s[4], s[5])
+    print(myid)
+    wlan.active(False)
+
+    gc.collect()
+    ssid = 'ESP_'+myid[-4:]  # Set access point name
     password = '12345678'  # Set your access point password
 
     # wdt = WDT() # 2 minute dog  # 8266 无法设置看门狗时间
@@ -233,6 +242,7 @@ def ap_start():
 
 if __name__ == "__main__":
     ap_start()
+
 
 
 

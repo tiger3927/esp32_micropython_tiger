@@ -4,8 +4,8 @@ from umqtt_simple import MQTTClient
 import network
 import time
 import ntptime
-from config import load_ssid_password, has_ssid_password, disable_ssid_password, save_status, load_status,\
-    compare_status,get_status,set_status,reset_status
+from config import load_ssid_password, has_ssid_password, disable_ssid_password, save_status, load_status, \
+    compare_status, get_status, set_status, reset_status
 import json
 
 wlan = None
@@ -53,6 +53,17 @@ def report_status(firstinfo=False):
     clientmqtt.publish(t, m)
 
 
+def setlastwill():
+    global clientmqtt, myid
+    md = {}
+    md["id"] = myid
+    md["type"] = "esp8266_switch"
+    m = json.dumps(md)
+    m="{}"
+    t="lastwill/esp8266_switch/"+ myid
+    print("lastwill",t,m)
+    clientmqtt.set_last_will(t, m)
+
 
 def connectWifi(ssid, passwd):
     global wlan, myid
@@ -85,7 +96,7 @@ def connectWifi(ssid, passwd):
 
 
 def run():
-    global wlan,myid, clientmqtt
+    global wlan, myid, clientmqtt
 
     reset_status()
 
@@ -97,16 +108,16 @@ def run():
     clientmqtt = None
     # Catch exceptions,stop program if interrupted accidentally in the 'try'
     if has_ssid_password() == 1:
-        r=False
+        r = False
         try:
             k = load_ssid_password()
-            r=connectWifi(k["SSID"], k["Password"])
+            r = connectWifi(k["SSID"], k["Password"])
         except Exception as e:
             print(e)
             print("error connect wifi.....reboot....to get wifi ssid pwd!")
             disable_ssid_password()
-            r=False
-        if r==False:
+            r = False
+        if r == False:
             try:
                 wlan.disconnect()
             except:
@@ -124,10 +135,11 @@ def run():
 
     try:
         server = SERVER
-        TOPIC = b"esp8266_switch/" + str.encode(myid)
+        TOPIC = b"esp8266_switch/control/" + str.encode(myid)
 
-        clientmqtt = MQTTClient(myid, server, 0, username, password)  # create a mqtt client
+        clientmqtt = MQTTClient(myid, server, 0, username, password,60)  # create a mqtt client
         clientmqtt.set_callback(sub_cb)  # set callback
+        setlastwill()
         clientmqtt.connect()  # connect mqtt
         clientmqtt.subscribe(TOPIC)  # client subscribes to a topic
         print("Connected to %s, subscribed to %s topic" % (server, TOPIC))
@@ -135,16 +147,16 @@ def run():
         lasttime = time.time()
         lasttime_info = time.time()
         while True:
-            if time.time() - lasttime > 30:
+            if time.time() - lasttime > 15:
                 lasttime = time.time()
                 clientmqtt.ping()
-            if time.time() - lasttime_info > 60:
+            if time.time() - lasttime_info > 30:
                 lasttime_info = time.time()
                 report_status()
             clientmqtt.check_msg()  # wait message
             time.sleep(0.1)
     except Exception as e:
-        print("mqtt  loop  error",e)
+        print("mqtt  loop  error", e)
     finally:
         try:
             if (clientmqtt is not None):
@@ -158,9 +170,12 @@ def run():
             print("wlan disconnect error")
         print("mqtt connection quit-------!----wlan close")
         wlan.active(False)
-        while(wlan.active()==True):
+        while (wlan.active() == True):
             time.sleep(0.1)
+
 
 if __name__ == "__main__":
     run()
+
+
 
