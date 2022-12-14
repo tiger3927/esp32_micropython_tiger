@@ -1,20 +1,17 @@
 try:
-    import usocket as socket  # importing socket
+    import usocket as socket        #importing socket
 except:
     import socket
 import machine
 import network  # importing network
 import esp  # importing ESP
-from config import save_ssid_password, load_ssid_password, enable_ssid_password
+from config import save_ssid_password, load_ssid_password,enable_ssid_password
 import gc
 import time
 from machine import Timer
 
-should_exit = False
-
-
 def web_server_for_ssid_password():
-    global should_exit
+
     HOST = ''
     PORT = 80
 
@@ -25,55 +22,42 @@ def web_server_for_ssid_password():
     index_content += str(file.read())
     file.close()
 
+    # Read reg.html, put into HTTP response data
+    # reg_content = '''
+    # HTTP/1.x 200 ok
+    # Content-Type: text/html
+    #
+    # '''
+    #
+    # file = open('reg.html', 'r')
+    # reg_content += file.read()
+    # file.close()
+
+    # Read picture, put into HTTP response data
+    # file = open('T-mac.jpg', 'rb')
+    # pic_content = '''
+    # HTTP/1.x 200 ok
+    # Content-Type: image/jpg
+    #
+    # '''
+    # pic_content += file.read()
+    # file.close()
+
     # Configure socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind((HOST, PORT))
-    sock.setblocking(False)
     sock.listen(100)
     print("web server listening on port:", PORT)
 
     # infinite loop
     while True:
         # maximum number of requests waiting
+        conn, addr = sock.accept()
+        should_reboot = False
         try:
-            conn, addr = sock.accept()
-        except:
-            try:
-                if conn is not None:
-                    conn.close()
-            except:
-                pass
-            if should_exit:
-                print("ap_start now exit --- !")
-                return
-            time.sleep(0.1)
-            continue
-        try:
-            recv = None
-            recvbuffer = b""
-            conn.setblocking(False)
-            while True:  # 一次性读取完，同时，看看是否强制退出了
-                try:
-                    recv = conn.read(1024)
-                except:
-                    pass
-                print("read loop",recv)
-                if recv is None:
-                    if should_exit:# 强制退出了
-                        # close connection
-                        conn.close()
-                        print("ap_start now exit --- !")
-                        return
-                    if len(recvbuffer) > 0:# 收取结束
-                        print("recv over",len(recvbuffer))
-                        break
-                    time.sleep(0.1)
-                else:
-                    print("loop recv",len(recv),len(recvbuffer))
-                    recvbuffer += recv
-            
-            print("receive", len(recvbuffer))
-            request = str(recvbuffer).replace("b'", "")[:-1]
+            recv=conn.recv(1024)
+            print("receive",len(recv),"  ",recv)
+            request = str(recv).replace("b'", "")[:-1]
             method = str(request.split(' ')[0]).replace("b'", "")
             src = request.split(' ')[1].replace(" ", "")
 
@@ -93,28 +77,25 @@ def web_server_for_ssid_password():
                     continue
 
                 if len(content) > 0:
-                    conn.send(str.encode('HTTP/1.0 200 OK\n'))
-                    conn.send(str.encode('Content-Type: text/html\n'))
-                    conn.send(str.encode('\n'))
-                    conn.send(str.encode(content))
-                    # time.sleep(0.1)
+                  conn.send(str.encode('HTTP/1.0 200 OK\n'))
+                  conn.send(str.encode('Content-Type: text/html\n'))
+                  conn.send(str.encode('\n'))
+                  conn.send(str.encode(content))
+                  #time.sleep(0.1)
             # deal with POST method
             elif method == 'POST':
-                try:
-                    conn.setblocking(True)
-                    recv = conn.recv(1024)
-                except:
-                    pass
-                print("second  receive", len(recv), "  ", recv)
+              
+                recv=conn.recv(1024)
+                print("second  receive",len(recv),"  ",recv)
                 request = str(recv).replace("b'", "")[:-1]
-
-                print("request", request)
+              
+                print("request",request)
                 form = request.split("\\r\\n")
-                print("form", form)
+                print("form",form)
                 entry = form[-1]  # main content of the request
-                print("entry", entry)
+                print("entry",entry)
                 params = entry.split("&")
-                print("param", params)
+                print("param",params)
                 k = {}
                 for param in params:
                     # print(param)
@@ -153,70 +134,62 @@ def web_server_for_ssid_password():
                     value = value.replace("%28", "(")
                     value = value.replace("%29", ")")
 
-                    print("k-v", key, value)
+                    print("k-v",key,value)
                     k[key] = value
                 print(k)
-                if len(k["SSID"]) > 0 and len(k["Password"]) >= 6:
-                    save_ssid_password(k)
-                    should_exit = True
+                if len(k["SSID"])>0 and len(k["Password"])>=6:
+                  save_ssid_password(k)
+                  should_reboot = True
 
-                    content = '<html><body>'
-                    content += k["SSID"] + "      " + k["Password"] + "      ! Reboot Please Waiting..."
-                    content += "</body></html>"
+                  content = '<html><body>'
+                  content += k["SSID"] + "      " + k["Password"]+"      ! Reboot Please Waiting..."
+                  content += "</body></html>"
                 else:
-                    content = index_content
+                  content = index_content
 
                 if len(content) > 0:
-                    conn.send(str.encode('HTTP/1.0 200 OK\n'))
-                    conn.send(str.encode('Content-Type: text/html\n'))
-                    conn.send(str.encode('\n'))
-                    conn.send(str.encode(content))
-                    time.sleep(1)
+                  conn.send(str.encode('HTTP/1.0 200 OK\n'))
+                  conn.send(str.encode('Content-Type: text/html\n'))
+                  conn.send(str.encode('\n'))
+                  conn.send(str.encode(content))
+                  time.sleep(0.1)
         except Exception as e:
-            print("Exception", e)
+            print("Exception",e)
             pass
 
         # close connection
         conn.close()
-        if should_exit:
-            print("ap_start now exit --- !")
-            return
-
-
+        if should_reboot:
+            print("ap_start now reboot --- !")
+            machine.reset()
+            
 def callback_timer0(timer):
-    global should_exit
     timer.deinit()
     print("timer 0 incoming..............reboot......")
-    should_exit = True
-    pass
-
-
+    machine.reset()
+    pass            
+            
 def ap_start():
-    global should_exit
-    should_exit = False
-    #esp.osdebug(None)
+    esp.osdebug(None)
     gc.collect()
-    
-    wlan = network.WLAN(network.STA_IF)  # create a wlan object
-    wlan.active(True)  # Activate the network interface
-    s = wlan.config('mac')
-    myid = "esp8266_" + ('%02x%02x%02x%02x%02x%02x') % (s[0], s[1], s[2], s[3], s[4], s[5])
-    print(myid)
-    wlan.active(False)
-
-    gc.collect()
-    ssid = 'ESP_'+myid[-4:]  # Set access point name
+    ssid = 'ESP_AP'  # Set access point name
     password = '12345678'  # Set your access point password
-
-    # wdt = WDT() # 2 minute dog  # 8266 无法设置看门狗时间
-    timer0 = Timer(-1)
-    timer0.init(period=1000 * 120, mode=Timer.PERIODIC, callback=callback_timer0)
-
+    
+    #wdt = WDT() # 2 minute dog
+    timer0=Timer(-1)
+    timer0.init(period=1000*120,mode=Timer.PERIODIC,callback=callback_timer0)
+    
     enable_ssid_password()
-
+    
     ap = network.WLAN(network.AP_IF)
     ap.active(True)  # activating
-
+    
+    #s = ap.config('mac')
+    #print(ap.config())
+    #myid = ('%02x%02x%02x%02x%02x%02x') %(s[0],s[1],s[2],s[3],s[4],s[5])
+    #ssid=ssid+myid
+    #print(ssid)    
+    
     ap.config(essid=ssid, password=password)
 
     while ap.active() == False:
@@ -224,26 +197,11 @@ def ap_start():
         pass
     print('Connection is successful')
     print(ap.ifconfig())
-    
-    try:
-        web_server_for_ssid_password()
-    except Exception as e:
-        print("web server error",e)
-    
-    try:
-        timer0.deinit()
-    except:
-        pass
 
-    ap.active(False)
-    while ap.active() == True:
-        time.sleep(0.1)
+    web_server_for_ssid_password()
 
 
-if __name__ == "__main__":
-    ap_start()
-
-
-
+if __name__=="__main__":
+  ap_start()
 
 
