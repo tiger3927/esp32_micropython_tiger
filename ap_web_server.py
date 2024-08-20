@@ -84,11 +84,11 @@ def web_server_for_ssid_password():
                   #time.sleep(0.1)
             # deal with POST method
             elif method == 'POST':
-              
+
                 recv=conn.recv(1024)
                 print("second  receive",len(recv),"  ",recv)
                 request = str(recv).replace("b'", "")[:-1]
-              
+
                 print("request",request)
                 form = request.split("\\r\\n")
                 print("form",form)
@@ -162,34 +162,39 @@ def web_server_for_ssid_password():
         if should_reboot:
             print("ap_start now reboot --- !")
             machine.reset()
-            
+
 def callback_timer0(timer):
     timer.deinit()
     print("timer 0 incoming..............reboot......")
     machine.reset()
-    pass            
-            
+    pass
+
 def ap_start():
     esp.osdebug(None)
     gc.collect()
     ssid = 'ESP_AP'  # Set access point name
     password = '12345678'  # Set your access point password
-    
+
     #wdt = WDT() # 2 minute dog
     timer0=Timer(-1)
     timer0.init(period=1000*120,mode=Timer.PERIODIC,callback=callback_timer0)
-    
+
     enable_ssid_password()
-    
+
     ap = network.WLAN(network.AP_IF)
+    s = ap.config('mac')
+    myid = ('%02x%02x%02x%02x%02x%02x') % (s[0], s[1], s[2], s[3], s[4], s[5])
+    print("ESP_",myid)
+    ssid = 'ESP_AP_' + myid  # Set access point name
+
     ap.active(True)  # activating
-    
+
     #s = ap.config('mac')
     #print(ap.config())
     #myid = ('%02x%02x%02x%02x%02x%02x') %(s[0],s[1],s[2],s[3],s[4],s[5])
     #ssid=ssid+myid
-    #print(ssid)    
-    
+    #print(ssid)
+
     ap.config(essid=ssid, password=password)
 
     while ap.active() == False:
